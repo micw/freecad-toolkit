@@ -27,6 +27,7 @@ timer = None
 doc_name = None  # Name des Dokuments, in das geladen wird
 watch_files = []
 project_root = None
+toolkit_root = None
 instance_token = None
 
 INSTANCE_STATE_ATTR = "_live_geometry_reloader_state"
@@ -37,8 +38,24 @@ def _normalize_path(path: str) -> str:
     return os.path.abspath(os.path.realpath(path))
 
 
+def _find_project_root(path: str) -> str:
+    """Findet die nächste Projektwurzel oberhalb der Geometriedatei."""
+    current = _normalize_path(path if os.path.isdir(path) else os.path.dirname(path))
+    start = current
+    while True:
+        if os.path.exists(os.path.join(current, ".git")) or os.path.exists(os.path.join(current, "pyproject.toml")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return start
+        current = parent
+
+
 if "__file__" in globals():
-    project_root = _normalize_path(os.path.dirname(os.path.dirname(__file__)))
+    configured_toolkit_root = os.environ.get("FREECAD_TOOLKIT_ROOT")
+    toolkit_root = _normalize_path(
+        configured_toolkit_root or os.path.dirname(os.path.dirname(__file__))
+    )
 
 
 def _get_shared_state():
@@ -176,6 +193,8 @@ def _ensure_import_paths(module_path: str):
     if project_root:
         search_paths.append(project_root)
     search_paths.append(module_dir)
+    if toolkit_root:
+        search_paths.append(toolkit_root)
 
     for path in reversed(search_paths):
         if path not in sys.path:
@@ -406,7 +425,7 @@ def stop_monitoring(reason=None):
 
 def run():
     """Hauptfunktion des Makros."""
-    global monitored_file, timer, doc_name, watch_files, instance_token
+    global monitored_file, timer, doc_name, watch_files, instance_token, project_root
 
     # Prüfen, ob ein Dokument geöffnet ist
     if not App.ActiveDocument:
@@ -436,6 +455,7 @@ def run():
 
     monitored_file = path
     monitored_file = _normalize_path(monitored_file)
+    project_root = _find_project_root(monitored_file)
     watch_files = [monitored_file]
     doc_name = App.ActiveDocument.Name  # Dokument fixieren, in das geladen wird
     instance_token = object()

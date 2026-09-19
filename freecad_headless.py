@@ -3,6 +3,7 @@
 import sys
 import os
 import re
+import traceback
 import importlib.util
 import FreeCAD as App
 import Mesh
@@ -12,6 +13,39 @@ AREA_UNIT_SWITCH_THRESHOLD = 1000.0
 VOLUME_UNIT_SWITCH_THRESHOLD = 10000.0
 PROJECTED_FACE_AREA_TOLERANCE = 1e-4
 PROJECTED_AREA_DEFLECTION = 0.2
+TOOLKIT_ROOT = os.path.abspath(os.path.dirname(__file__))
+PROJECT_ROOT_MARKERS = (".git", "pyproject.toml")
+
+
+def find_project_root(start_path):
+    """Find the nearest project root above a geometry script."""
+    current = os.path.abspath(start_path)
+    if not os.path.isdir(current):
+        current = os.path.dirname(current)
+
+    while True:
+        if any(os.path.exists(os.path.join(current, marker)) for marker in PROJECT_ROOT_MARKERS):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return os.path.abspath(start_path if os.path.isdir(start_path) else os.path.dirname(start_path))
+        current = parent
+
+
+def configure_import_paths(geometry_script_path, project_root=None):
+    """Make toolkit, geometry directory and project root importable."""
+    geometry_dir = os.path.dirname(os.path.abspath(geometry_script_path))
+    resolved_project_root = os.path.abspath(project_root) if project_root else find_project_root(geometry_dir)
+    if not os.path.isdir(resolved_project_root):
+        raise ValueError(f"Projektwurzel existiert nicht: {resolved_project_root}")
+
+    # Insert in reverse priority order. The project takes precedence over the
+    # geometry directory, while the toolkit remains available as a fallback.
+    for path in (TOOLKIT_ROOT, geometry_dir, resolved_project_root):
+        if path in sys.path:
+            sys.path.remove(path)
+        sys.path.insert(0, path)
+    return resolved_project_root
 
 
 def format_area(area_mm2):
@@ -421,7 +455,7 @@ def write_grouped_3mf(export_objects, output_path):
     return len(objects_meta), len(part_files)
 
 
-def process_geometry(geometry_script_path, command, output_filename=None):
+def process_geometry(geometry_script_path, command, output_filename=None, project_root=None):
     """
     Lädt ein Geometrie-Skript und führt verschiedene Operationen aus.
     
@@ -429,10 +463,14 @@ def process_geometry(geometry_script_path, command, output_filename=None):
         geometry_script_path: Pfad zum Geometrie-Skript
         command: 'test', 'export-stl', 'export-3mf' oder 'export-stp'
         output_filename: Name der Ausgabedatei (für export)
+        project_root: Optionale Projektwurzel für projektinterne Imports
     """
+    geometry_script_path = os.path.abspath(geometry_script_path)
     if not os.path.exists(geometry_script_path):
         App.Console.PrintError(f"Fehler: Geometrie-Skript nicht gefunden unter: {geometry_script_path}\n")
         sys.exit(1)
+
+    configure_import_paths(geometry_script_path, project_root)
 
     # Dokument erstellen
     doc = App.newDocument("ProcessDoc")
@@ -585,6 +623,10 @@ def main():
         help="Aktion: test (nur prüfen), export-stl (als STL exportieren), export-3mf (als 3MF exportieren), export-stp (als STEP exportieren)"
     )
     parser.add_argument(
+        "--project-root",
+        help="Optionale Projektwurzel für projektinterne Python-Imports. Standard: automatische Erkennung."
+    )
+    parser.add_argument(
         "geometry_script",
         help="Pfad zum Python-Skript, das eine 'create_geometry(doc)'-Funktion definiert."
     )
@@ -608,7 +650,20 @@ def main():
         App.Console.PrintError(f"Fehler: {args.command} benötigt einen output_file Parameter.\n")
         sys.exit(1)
 
-    process_geometry(args.geometry_script, args.command, args.output_file)
+    try:
+        process_geometry(
+            args.geometry_script,
+            args.command,
+            args.output_file,
+            project_root=args.project_root,
+        )
+    except SystemExit:
+        raise
+    except Exception as error:
+        App.Console.PrintError(f"Fehler beim Verarbeiten der Geometrie: {error}\n")
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
 
 main()
 

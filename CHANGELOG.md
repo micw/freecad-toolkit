@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0
+
+- Öffentliches Python-Paket `freecad_toolkit` ergänzt; bestehende `lib`-Imports
+  bleiben kompatibel.
+- Packaging-Metadaten in `pyproject.toml` ergänzt.
+- Projektwurzel und Verzeichnis des Geometrieskripts werden vom
+  Headless-Runner in den Python-Suchpfad aufgenommen.
+- Option `--project-root` für explizite Projektpfade ergänzt.
+- Unerwartete Import- und Geometriefehler liefern jetzt einen Exit-Code ungleich
+  null.
+- Integrationstest für externe CAD-Projekte ergänzt.
+- Live-Reload erkennt die Projektwurzel anhand der ausgewählten Geometriedatei
+  und unterstützt `FREECAD_TOOLKIT_ROOT` für externe Installationen.
+
 ## 0.2.0
 
 - Wiederverwendbare Geometriebausteine mit `Shape2D`, `ModuleResult` und

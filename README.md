@@ -11,7 +11,38 @@ dem Headless-Runner geprüft oder exportiert werden.
 
 - FreeCAD mit Python-, Part-, Mesh- und optional TechDraw-Unterstützung
 - ursprünglich mit FreeCAD 1.0.2 entwickelt
-- Version 0.2.0 mit FreeCAD 1.1.3 getestet
+- Version 0.3.0 mit FreeCAD 1.1.3 getestet
+
+## Verwendung als Library
+
+Das öffentliche Python-Paket heißt `freecad_toolkit`:
+
+```python
+from freecad_toolkit import (
+    ModuleResult,
+    PreviewAssembly,
+    Shape2D,
+    merge_params,
+)
+```
+
+Der bisherige Import über `lib` bleibt in Version 0.3.0 kompatibel, ist aber
+nicht mehr die empfohlene öffentliche Schnittstelle.
+
+Das Toolkit kann als Git-Submodul in ein CAD-Projekt eingebunden werden. Der
+Headless-Runner fügt Toolkit, Projektwurzel und Verzeichnis des
+Geometrieskripts automatisch zum Python-Suchpfad hinzu. Die Projektwurzel wird
+an `.git` oder `pyproject.toml` erkannt und kann explizit gesetzt werden:
+
+```bash
+tools/freecad-toolkit/freecad_headless.py \
+  test \
+  --project-root "$PWD" \
+  enclosure/cad/geometry_example.py
+```
+
+Dadurch können Geometrieskripte sowohl `freecad_toolkit` als auch eigene
+Projektmodule importieren.
 
 ## Headless-Runner
 
@@ -23,7 +54,16 @@ dem Headless-Runner geprüft oder exportiert werden.
 ```
 
 Der Testmodus zeigt Bounding Box, Volumen, Oberfläche, projizierte Fläche,
-Anzahl der Vertices und Anzahl der Faces an.
+Anzahl der Vertices und Anzahl der Faces an. Import- und Geometriefehler führen
+zu einem Exit-Code ungleich null, sodass der Runner in Makefiles und CI-Jobs
+verwendet werden kann.
+
+Der Integrationstest benötigt FreeCAD und prüft öffentliche sowie
+projektinterne Imports und den Exit-Code bei Fehlern:
+
+```bash
+./tests/test_external_project.sh
+```
 
 Ein minimales Geometrieskript:
 
@@ -31,12 +71,15 @@ Ein minimales Geometrieskript:
 import FreeCAD as App
 import Part
 
+from freecad_toolkit import PreviewAssembly
+
 
 def create_geometry(doc):
-    shape = Part.makeBox(10, 10, 10, App.Vector(-5, -5, -5))
-    obj = doc.addObject("Part::Feature", "Example")
-    obj.Shape = shape
-    return [obj]
+    assembly = PreviewAssembly()
+    assembly.group("Example").add(
+        Part.makeBox(10, 10, 10, App.Vector(-5, -5, -5))
+    )
+    return assembly.build(doc)
 ```
 
 ### Export vorbereiten
@@ -69,26 +112,11 @@ kann. Jedes Slicer-Objekt wird dabei als Einheit auf `Z = 0` gesetzt.
 
 ## Geometrie-Helfer
 
-Das Paket `lib` stellt gemeinsame Bausteine bereit:
-
-```python
-from lib.freecad_common import (
-    ModuleResult,
-    PreviewAssembly,
-    Shape2D,
-    merge_params,
-)
-```
-
 - `Shape2D`: verkettbare Linien, Bögen und runde Aussparungen in der XY-Ebene
 - `ModuleResult`: semantisch gruppierte, transformierbare Modulgeometrie
 - `PreviewAssembly`: Aufbau benannter FreeCAD-Objekte mit Farbe, Transparenz
   und Exportstatus
 - `merge_params`: Zusammenführen von Defaults und Overrides
-
-Das Repository muss dafür im Python-Suchpfad liegen. Der Headless-Runner und
-das Live-Reload-Makro sorgen bei normaler Verwendung dafür, dass Projekt- und
-Modulpfade importierbar sind.
 
 ## Live-Reload in FreeCAD
 
@@ -96,9 +124,13 @@ Modulpfade importierbar sind.
 ausgeführt. Nach Auswahl eines Geometrieskripts wird dessen
 `create_geometry(doc)` bei Dateiänderungen erneut ausgeführt.
 
-Ab Version 0.2.0 beobachtet das Makro auch geladene Python-Module innerhalb
-des Projekts. Weitere Dateien können vom Geometrieskript über `WATCH_FILES`
-angegeben werden:
+Das Makro erkennt die Projektwurzel aus der ausgewählten Geometriedatei und
+nimmt den Toolkit-Pfad in den Python-Suchpfad auf. Wird das Makro aus dem
+Toolkit-Verzeichnis herauskopiert statt verlinkt, muss der Installationspfad
+über `FREECAD_TOOLKIT_ROOT` gesetzt werden.
+
+Das Makro beobachtet auch geladene Python-Module innerhalb des Projekts.
+Weitere Dateien können vom Geometrieskript über `WATCH_FILES` angegeben werden:
 
 ```python
 WATCH_FILES = ["components/support.py", "config.py"]

@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "freecad-toolkit"
+version = "0.3.0"
+description = "Reusable helpers for scripted, parametric FreeCAD models"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["freecad_toolkit", "lib"]
